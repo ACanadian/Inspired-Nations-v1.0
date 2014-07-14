@@ -214,8 +214,6 @@ public class InspiredNations extends JavaPlugin {
 				ItemStack item = item1.getItem();
 				System.out.println("This loop works");
 				Debug.print("3");
-
-				System.out.println("This Works");
 				ItemMeta itemMeta = item.getItemMeta();
 				itemMeta.setDisplayName(ChatColor.DARK_GREEN
 						+ item1.getName());
