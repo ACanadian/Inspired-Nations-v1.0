@@ -3,11 +3,17 @@ package com.github.InspiredOne.InspiredNations;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.block.Chest;
+import org.bukkit.block.DoubleChest;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -19,12 +25,17 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -35,13 +46,17 @@ import com.github.InspiredOne.InspiredNations.Economy.MoneyExchange;
 import com.github.InspiredOne.InspiredNations.Economy.NPC;
 import com.github.InspiredOne.InspiredNations.Economy.TaxTimer;
 import com.github.InspiredOne.InspiredNations.Economy.Implem.ItemMarketplace;
+import com.github.InspiredOne.InspiredNations.Economy.Implem.ItemSellable;
 import com.github.InspiredOne.InspiredNations.Exceptions.PlayerOfflineException;
 import com.github.InspiredOne.InspiredNations.Governments.GlobalGov;
 import com.github.InspiredOne.InspiredNations.Governments.GovFactory;
 import com.github.InspiredOne.InspiredNations.Governments.InspiredGov;
+import com.github.InspiredOne.InspiredNations.Governments.Implem.ChestShop;
 import com.github.InspiredOne.InspiredNations.Hud.Implem.Player.PlayerID;
+import com.github.InspiredOne.InspiredNations.Regions.Implem.ShopRegion;
 import com.github.InspiredOne.InspiredNations.ToolBox.IndexedMap;
 import com.github.InspiredOne.InspiredNations.ToolBox.MultiGovMap;
+import com.github.InspiredOne.InspiredNations.ToolBox.Point3D;
 import com.github.InspiredOne.InspiredNations.ToolBox.MenuTools.MenuAlert;
 
 public class InspiredNations extends JavaPlugin {
@@ -182,7 +197,131 @@ public class InspiredNations extends JavaPlugin {
 				}
 			}
 		}
+		private HashMap<PlayerID, ChestShop> eventChestShop = new HashMap<PlayerID, ChestShop>();
+		private HashMap<PlayerID, Chest> eventChestHash = new HashMap<PlayerID, Chest>();
+		private HashMap<PlayerID, Location> eventLocationHash = new HashMap<PlayerID, Location>();
+		private HashMap<PlayerID, Inventory> eventInvHash = new HashMap<PlayerID, Inventory>();
+		private HashMap<PlayerID, ItemStack[]> contentsHash = new HashMap<PlayerID, ItemStack[]>();
+		private HashMap<Point3D, Boolean> chestCheck = new HashMap<Point3D, Boolean>();
+		private HashMap<PlayerID, Point3D> eventPoint3D = new HashMap<PlayerID, Point3D>();
+
+		public Inventory getSellablesInv(Inventory inv, ChestShop chest,
+				PlayerID player1) {
+			System.out.println("Test");
+			Inventory tempInv = inv;
+			tempInv.clear();
+			for (ItemSellable item1 : chest.getItems()) {
+				ItemStack item = item1.getItem();
+				System.out.println("This loop works");
+				Debug.print("3");
+
+				System.out.println("This Works");
+				ItemMeta itemMeta = item.getItemMeta();
+				itemMeta.setDisplayName(ChatColor.DARK_GREEN
+						+ item1.getName());
+				item.setItemMeta(itemMeta);
+				tempInv.addItem(item);
+
+			}
+			return tempInv;
+		}
+
+		@EventHandler
+		public void onOpenInventoryEvent(PlayerInteractEvent event) {
+			Player player1 = (Player) event.getPlayer();
+			PlayerID player = new PlayerID(event.getPlayer());
+			if (event.getAction().equals(Action.RIGHT_CLICK_BLOCK)
+					&& event.getClickedBlock().getType().equals(Material.CHEST)) {
+				for (InspiredGov gov : InspiredNations.regiondata
+						.get(ChestShop.class)) {
+					Chest chest = (Chest) event.getClickedBlock().getState();
+					if (chest.getBlock().getType().equals(Material.CHEST)) {
+						Location chestLocation = event.getClickedBlock()
+								.getLocation();
+						if (gov.getRegion().getRegion().contains(chestLocation)) {
+							eventChestHash.put(player, chest);
+							eventLocationHash.put(player, chestLocation);
+							ShopRegion region = ((ShopRegion) gov.getRegion()
+									.getRegion());
+							Point3D chest1 = region.one;
+							if (!chestCheck.containsKey(chest1)) {
+								eventPoint3D.put(player, chest1);
+								event.setCancelled(true);
+								ChestShop chestShop = (ChestShop) gov;
+								eventChestShop.put(player, chestShop);
+								Inventory inv = (Inventory) ((Chest) chest1
+										.getLocation().getBlock().getState())
+										.getInventory();
+								InventoryHolder ih = chest.getInventory()
+										.getHolder();
+								if (ih instanceof Chest) {
+									Inventory tempInv = Bukkit.createInventory(
+											player1, 27, ChatColor.DARK_RED
+													+ gov.getName());
+									contentsHash.put(player, inv.getContents());
+
+									chestCheck.put(chest1, true);
+									for (PlayerID checkPlayer : chestShop
+											.getOwners()) {
+										if (player.equals(checkPlayer)) {
+											tempInv.setContents(contentsHash.get(player));
+											eventInvHash.put(player, tempInv);
+											player1.openInventory(tempInv);
+											break;
+										} else {
+											tempInv.setContents(this.getSellablesInv(inv,
+													chestShop, player).getContents());
+											eventInvHash.put(player, tempInv);
+											player1.openInventory(tempInv);
+										}
+									}
+									System.out.println("THIS BETTER WORK");
+
+									break;
+								} else if (ih instanceof DoubleChest) {
+									DoubleChest dc = (DoubleChest) ih;
+									Inventory tempInv = Bukkit.createInventory(
+											player1, 54, ChatColor.DARK_GREEN
+													+ gov.getName());
+									contentsHash.put(player, dc.getInventory()
+											.getContents());
+									tempInv.setContents(contentsHash
+											.get(player));
+									eventInvHash.put(player, tempInv);
+									player1.openInventory(tempInv);
+									break;
+
+								}
+							} else {
+								player1.sendMessage("A Player is already accessing this chest!");
+								event.setCancelled(true);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		@EventHandler
+		public void onPlayerCloseInventoryEvent(InventoryCloseEvent event) {
+			PlayerID player = new PlayerID((Player) event.getPlayer());
+			if (event.getInventory().equals(eventInvHash.get(player))) {
+				for (PlayerID checkPlayer : eventChestShop.get(player)
+						.getOwners()) {
+					if (player.equals(checkPlayer)) {
+						contentsHash.put(player, eventInvHash.get(player)
+								.getContents());
+						eventChestHash.get(player).getInventory()
+								.setContents(contentsHash.get(player));
+						chestCheck.remove(eventPoint3D.get(player));
+					} else {
+						chestCheck.remove(eventPoint3D.get(player));					}
+				}
+			}
+		}
 	}
+	
 	
 	public class TempCommandListener implements CommandExecutor {
 
